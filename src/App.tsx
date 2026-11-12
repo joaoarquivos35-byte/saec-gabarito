@@ -109,8 +109,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'resultados' | 'discursivas' | 'visao_computacional' | 'gabarito_oficial'>('resultados');
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
 
-  // Gabarito oficial editável
+  // Gabarito oficial editável e mapeamento de Respostas Construídas (RC)
   const [answerKey, setAnswerKey] = useState<Record<number, string>>(DEFAULT_ANSWER_KEYS['5ano']);
+  const [constructedQuestions, setConstructedQuestions] = useState<Record<number, boolean>>({});
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -120,6 +121,7 @@ export default function App() {
 
   useEffect(() => {
     setAnswerKey(DEFAULT_ANSWER_KEYS[selectedModel]);
+    setConstructedQuestions({});
   }, [selectedModel]);
 
   // Iniciar Câmera
@@ -389,30 +391,43 @@ export default function App() {
     processImageForOMR(tiltedCanvas);
   };
 
+  // CÁLCULO DA NOTA (COM REGRA DE DISCURSIVAS)
   const calculateScore = () => {
-    if (!scanResult) return { correct: 0, total: 0, percentage: 0 };
-    let correct = 0;
+    if (!scanResult) return { score: 0, total: 0, percentage: 0 };
+    let score = 0;
     const total = scanResult.totalQuestions;
 
     scanResult.questions.forEach((q) => {
-      const expected = answerKey[q.question];
-      if (q.status === 'VALDA' && q.answer === expected) {
-        correct++;
+      const isRC = constructedQuestions[q.question];
+      
+      if (isRC) {
+        // Regra de pesos para Resposta Construída (A=0, B=0.5, C=0.75, D=1.0)
+        if (q.status === 'VALDA') {
+          if (q.answer === 'B') score += 0.5;
+          else if (q.answer === 'C') score += 0.75;
+          else if (q.answer === 'D') score += 1.0;
+        }
+      } else {
+        // Regra normal para questão Objetiva (Certo=1, Errado=0)
+        const expected = answerKey[q.question];
+        if (q.status === 'VALDA' && q.answer === expected) {
+          score += 1;
+        }
       }
     });
 
-    const percentage = Math.round((correct / total) * 100);
-    return { correct, total, percentage };
+    const percentage = Math.round((score / total) * 100);
+    return { score, total, percentage };
   };
 
   const handleExportJSON = () => {
     if (!scanResult) return;
-    const score = calculateScore();
+    const scoreData = calculateScore();
     const exportData = {
       timestamp: new Date().toISOString(),
       standard: 'SAEC - Rede Municipal',
       model: scanResult.model,
-      score,
+      scoreData,
       summary: {
         total: scanResult.totalQuestions,
         valid: scanResult.validCount,
@@ -421,6 +436,7 @@ export default function App() {
       },
       objectiveAnswers: scanResult.questions.map(q => ({
         question: q.question,
+        isRC: constructedQuestions[q.question] || false,
         marked: q.answer,
         status: q.status,
         official: answerKey[q.question] || null,
@@ -534,17 +550,16 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. Barra Superior: Select Obrigatório com as 5 Etapas SAEC */}
+      {/* 2. Barra Superior */}
       <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
             <Scan className="w-5 h-5 text-cyan-400" />
             OMR SAEC
           </span>
-          <span className="hidden sm:inline text-xs text-slate-400">· Rede Municipal (4 Alternativas A-D)</span>
+          <span className="hidden sm:inline text-xs text-slate-400">· Rede Municipal</span>
         </div>
 
-        {/* Select de Etapas Oficiais SAEC */}
         <div className="flex items-center gap-2">
           <label htmlFor="model-select" className="sr-only">Etapa Escolar</label>
           <select
@@ -553,14 +568,13 @@ export default function App() {
             onChange={(e) => setSelectedModel(e.target.value as SheetModelKey)}
             className="px-3 py-2 text-xs font-medium rounded-lg bg-slate-900/95 text-white border border-slate-700 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer shadow-md"
           >
-            <option value="1ano">1º Ano (20 Questões · A-D)</option>
-            <option value="2e3ano">2º e 3º Ano (30 Questões · A-D)</option>
-            <option value="4ano">4º Ano (36 Questões · A-D)</option>
-            <option value="5ano">5º Ano (40 Questões · 2 Colunas · A-D)</option>
-            <option value="6a9ano">6º ao 9º Ano (50 Questões · 3 Colunas · A-D)</option>
+            <option value="1ano">1º Ano (20 Questões)</option>
+            <option value="2e3ano">2º e 3º Ano (30 Questões)</option>
+            <option value="4ano">4º Ano (36 Questões)</option>
+            <option value="5ano">5º Ano (40 Questões)</option>
+            <option value="6a9ano">6º ao 9º Ano (50 Questões)</option>
           </select>
 
-          {/* Trocar Câmera */}
           <button
             onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
             title="Alternar Câmera"
@@ -569,7 +583,6 @@ export default function App() {
             <RotateCw className="w-4 h-4" />
           </button>
 
-          {/* Gerar / Imprimir Gabarito SAEC */}
           <button
             onClick={() => setShowPrintModal(true)}
             title="Imprimir Folha SAEC"
@@ -579,7 +592,6 @@ export default function App() {
             <span>Imprimir Folha</span>
           </button>
 
-          {/* Baixar site-gabarito.zip para Vercel */}
           <a
             href="/site-gabarito.zip"
             download="site-gabarito.zip"
@@ -590,7 +602,6 @@ export default function App() {
             <span>ZIP Vercel</span>
           </a>
 
-          {/* Upload de Imagem */}
           <button
             onClick={() => fileInputRef.current?.click()}
             title="Carregar Imagem"
@@ -620,7 +631,6 @@ export default function App() {
             <span className="hidden sm:inline">Testar Amostra SAEC</span>
           </button>
 
-          {/* Botão Principal de Leitura */}
           <button
             onClick={handleScanClick}
             disabled={isScanning}
@@ -661,11 +671,11 @@ export default function App() {
           <span aria-hidden="true">·</span>
           <span>4 Alternativas (A, B, C, D)</span>
           <span aria-hidden="true">·</span>
-          <span className="text-cyan-400 font-mono">Discursivas T/P/E/B</span>
+          <span className="text-cyan-400 font-mono">Discursivas A=0, B=0.5, C=0.75, D=1.0</span>
         </div>
       </footer>
 
-      {/* 4. MODAL DE RESULTADOS & AUDITORIA SAEC */}
+      {/* 4. MODAL DE RESULTADOS */}
       {showResultModal && scanResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
           <div className="relative w-full max-w-4xl max-h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
@@ -682,9 +692,7 @@ export default function App() {
                   <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                     <span>{scanResult.model}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{scanResult.totalQuestions} Objetivas</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="text-cyan-400 font-medium">{scanResult.constructedResponses.length} Discursivas</span>
+                    <span>{scanResult.totalQuestions} Questões</span>
                   </div>
                 </div>
               </div>
@@ -716,18 +724,17 @@ export default function App() {
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Questões Objetivas ({scanResult.totalQuestions})
+                Relatório de Pontuação
               </button>
               <button
-                onClick={() => setActiveTab('discursivas')}
-                className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
-                  activeTab === 'discursivas'
+                onClick={() => setActiveTab('gabarito_oficial')}
+                className={`pb-3 text-xs font-semibold border-b-2 transition-colors ${
+                  activeTab === 'gabarito_oficial'
                     ? 'border-cyan-400 text-cyan-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5" />
-                Respostas Construídas (Discursivas)
+                Configurar Gabarito
               </button>
               <button
                 onClick={() => setActiveTab('visao_computacional')}
@@ -738,30 +745,20 @@ export default function App() {
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
-                Auditoria de Visão Computacional
-              </button>
-              <button
-                onClick={() => setActiveTab('gabarito_oficial')}
-                className={`pb-3 text-xs font-semibold border-b-2 transition-colors ${
-                  activeTab === 'gabarito_oficial'
-                    ? 'border-cyan-400 text-cyan-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Gabarito Oficial
+                Auditoria de Leitura
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* ABA 1: RESULTADOS OBJETIVAS */}
+              {/* ABA 1: RESULTADOS GERAIS */}
               {activeTab === 'resultados' && (
                 <div className="space-y-6">
                   {/* Resumo */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                      <div className="text-xs text-slate-400">Pontuação Objetiva</div>
+                      <div className="text-xs text-slate-400">Pontuação Total</div>
                       <div className="text-2xl font-bold font-mono text-cyan-400 mt-1">
-                        {scoreData.correct}/{scoreData.total}
+                        {scoreData.score.toLocaleString('pt-BR')}/{scoreData.total}
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">{scoreData.percentage}% de acerto</div>
                     </div>
@@ -791,90 +788,91 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Tabela de Questões Objetivas */}
+                  {/* Tabela de Questões */}
                   <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
                     <div className="px-4 py-3 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
                       <h3 className="text-xs font-semibold text-slate-200">
                         {SHEET_MODELS[selectedModel].shortName} · Alternativas A, B, C, D
                       </h3>
-                      <span className="text-xs text-slate-500">
-                        Sensibilidade: {thresholdPercent}%
-                      </span>
                     </div>
 
                     <div className={`grid grid-cols-1 ${SHEET_MODELS[selectedModel].columns === 3 ? 'md:grid-cols-3' : 'sm:grid-cols-2'} divide-y sm:divide-y-0 divide-slate-800`}>
-                      {renderQuestionColumns(scanResult, answerKey, selectedModel)}
+                      {renderQuestionColumns(scanResult, answerKey, selectedModel, constructedQuestions)}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ABA 2: RESPOSTAS CONSTRUÍDAS (DISCURSIVAS DO PROFESSOR) */}
-              {activeTab === 'discursivas' && (
-                <div className="space-y-6">
-                  <div className="p-4 rounded-xl bg-sky-950/20 border border-sky-800/40 text-xs text-sky-200 space-y-1">
-                    <p className="font-semibold text-sky-100 flex items-center gap-1.5">
-                      <FileText className="w-4 h-4 text-sky-400" />
-                      Bloco Oficial de Respostas Construídas (SAEC)
-                    </p>
-                    <p>
-                      Espaço específico no final da folha onde o professor avaliador assinala a pontuação da questão discursiva:
-                      <br />
-                      <strong>[ T ] Acerto Total</strong> · <strong>[ P ] Acerto Parcial</strong> · <strong>[ E ] Erro / Insuficiente</strong> · <strong>[ B ] Em Branco</strong>
-                    </p>
+              {/* ABA 2: GABARITO OFICIAL COM CONTROLE DE DISCURSIVAS */}
+              {activeTab === 'gabarito_oficial' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-200">
+                        Gabarito Oficial e Respostas Construídas (RC)
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                        Defina a alternativa correta ou marque "É Discursiva?" para que a questão seja calculada com a tabela de pesos: <b>A=0, B=0.5, C=0.75, D=1.0</b>.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAnswerKey(DEFAULT_ANSWER_KEYS[selectedModel]);
+                        setConstructedQuestions({});
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors whitespace-nowrap"
+                    >
+                      Restaurar Padrão
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {scanResult.constructedResponses.map((rc) => (
-                      <div
-                        key={rc.item}
-                        className="p-5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3"
-                      >
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                          <span className="text-sm font-bold text-white">
-                            {rc.label}
-                          </span>
-                          <span className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
-                            rc.answer === 'T'
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : rc.answer === 'P'
-                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                              : rc.answer === 'E'
-                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {rc.answer ? `Nota: ${rc.answer} (${rc.rubricName})` : 'Não avaliada'}
-                          </span>
-                        </div>
-
-                        {/* Bolhas de Avaliação */}
-                        <div className="flex items-center justify-around pt-2">
-                          {(['T', 'P', 'E', 'B'] as const).map((opt) => {
-                            const isMarked = rc.answer === opt;
-                            const density = rc.densities[opt] || 0;
-                            return (
-                              <div key={opt} className="flex flex-col items-center gap-1">
-                                <div
-                                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
-                                    isMarked
-                                      ? 'bg-sky-500 text-slate-950 ring-4 ring-sky-500/30 font-extrabold'
-                                      : 'bg-slate-900 border border-slate-700 text-slate-400'
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {Array.from({ length: SHEET_MODELS[selectedModel].questionsCount }, (_, i) => i + 1).map((qNum) => {
+                      const currentVal = answerKey[qNum] || 'A';
+                      const isRC = constructedQuestions[qNum] || false;
+                      const opts = SHEET_MODELS[selectedModel].options;
+                      
+                      return (
+                        <div key={qNum} className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 flex flex-col gap-2 justify-between transition-colors hover:bg-slate-900/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-slate-400">
+                              Q{qNum < 10 ? '0' + qNum : qNum}
+                            </span>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isRC}
+                                onChange={(e) => setConstructedQuestions(prev => ({ ...prev, [qNum]: e.target.checked }))}
+                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30"
+                              />
+                              <span className="text-[10px] text-slate-400 font-medium">É Discursiva?</span>
+                            </label>
+                          </div>
+                          
+                          {isRC ? (
+                            <div className="text-[10px] text-cyan-400 font-medium text-center py-1.5 bg-cyan-500/10 rounded border border-cyan-500/20">
+                              A=0 | B=0,5 | C=0,75 | D=1
+                            </div>
+                          ) : (
+                            <div className="flex gap-1 justify-center">
+                              {opts.map((opt) => (
+                                <button
+                                  key={opt}
+                                  onClick={() => setAnswerKey(prev => ({ ...prev, [qNum]: opt }))}
+                                  className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
+                                    currentVal === opt
+                                      ? 'bg-cyan-500 text-slate-950'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white'
                                   }`}
                                 >
                                   {opt}
-                                </div>
-                                <span className="text-[10px] text-slate-400">
-                                  {opt === 'T' ? 'Total' : opt === 'P' ? 'Parcial' : opt === 'E' ? 'Erro' : 'Branco'}
-                                </span>
-                                <span className="text-[10px] font-mono text-slate-500">
-                                  {density}%
-                                </span>
-                              </div>
-                            );
-                          })}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -883,38 +881,26 @@ export default function App() {
               {activeTab === 'visao_computacional' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Imagem Original */}
                     <div className="rounded-xl border border-slate-800 p-3 bg-slate-950/60 flex flex-col space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-300 font-medium">
-                        <span>1. Captura da Foto (Qualquer Inclinação)</span>
-                        <span className="font-mono text-slate-500">Original</span>
+                        <span>1. Captura da Foto</span>
                       </div>
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-black flex items-center justify-center border border-slate-800">
                         {auditImages.originalUrl ? (
-                          <img
-                            src={auditImages.originalUrl}
-                            alt="Foto Original"
-                            className="w-full h-full object-contain"
-                          />
+                          <img src={auditImages.originalUrl} alt="Original" className="w-full h-full object-contain" />
                         ) : (
                           <span className="text-xs text-slate-500">Sem imagem</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Imagem Normalizada por Homografia */}
                     <div className="rounded-xl border border-slate-800 p-3 bg-slate-950/60 flex flex-col space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-300 font-medium">
-                        <span>2. Folha Normalizada + Leitura OMR das Bolhas</span>
-                        <span className="font-mono text-emerald-400">1000 × 1414 px</span>
+                        <span>2. Folha Normalizada</span>
                       </div>
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-black flex items-center justify-center border border-slate-800">
                         {auditImages.warpedUrl ? (
-                          <img
-                            src={auditImages.warpedUrl}
-                            alt="Gabarito Achatado por Homografia"
-                            className="w-full h-full object-contain"
-                          />
+                          <img src={auditImages.warpedUrl} alt="Normalizada" className="w-full h-full object-contain" />
                         ) : (
                           <span className="text-xs text-slate-500">Sem imagem normalizada</span>
                         )}
@@ -922,27 +908,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {auditImages.homographyMatrix && (
-                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
-                      <h4 className="text-xs font-semibold text-slate-300">
-                        Matriz Projetiva H (3×3) - Homografia
-                      </h4>
-                      <div className="grid grid-cols-3 gap-2 font-mono text-xs text-cyan-300 bg-slate-900/80 p-3 rounded-lg border border-slate-800 text-center">
-                        {auditImages.homographyMatrix.map((val, idx) => (
-                          <div key={idx} className="p-1 bg-slate-950 rounded border border-slate-800/80">
-                            {val.toFixed(6)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-300">
-                        Limiar de Densidade de Tinta: <span className="font-mono text-cyan-400">{thresholdPercent}%</span>
+                        Limiar de Densidade: <span className="font-mono text-cyan-400">{thresholdPercent}%</span>
                       </span>
-                      <span className="text-xs text-slate-500">Padrão SAEC: 36%</span>
                     </div>
                     <input
                       type="range"
@@ -955,69 +925,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              {/* ABA 4: GABARITO OFICIAL */}
-              {activeTab === 'gabarito_oficial' && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-200">
-                        Gabarito Oficial para Correção Automática (A-D)
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Defina a alternativa correta de cada questão ({SHEET_MODELS[selectedModel].questionsCount} questões).
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setAnswerKey(DEFAULT_ANSWER_KEYS[selectedModel])}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
-                    >
-                      Restaurar Padrão
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                    {Array.from({ length: SHEET_MODELS[selectedModel].questionsCount }, (_, i) => i + 1).map((qNum) => {
-                      const currentVal = answerKey[qNum] || 'A';
-                      const opts = SHEET_MODELS[selectedModel].options; // Somente A, B, C, D
-                      return (
-                        <div key={qNum} className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold text-slate-400">
-                            Q{qNum < 10 ? '0' + qNum : qNum}
-                          </span>
-                          <div className="flex gap-1">
-                            {opts.map((opt) => (
-                              <button
-                                key={opt}
-                                onClick={() => setAnswerKey(prev => ({ ...prev, [qNum]: opt }))}
-                                className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
-                                  currentVal === opt
-                                    ? 'bg-cyan-500 text-slate-950'
-                                    : 'bg-slate-900 text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {opt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
-                Padrão Oficial SAEC · 4 Alternativas (A, B, C, D)
-              </span>
-              <button
-                onClick={() => setShowResultModal(false)}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors"
-              >
-                Fechar
-              </button>
             </div>
           </div>
         </div>
@@ -1041,23 +948,10 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Folha oficial no padrão SAEC com <strong>4 alternativas (A, B, C, D)</strong> e{' '}
-              <strong>Bloco de Respostas Construídas</strong> no rodapé. Imprima em papel A4 padrão.
-            </p>
-
             <div className="relative aspect-[1/1.414] max-h-[380px] mx-auto rounded-lg overflow-hidden border border-slate-700 bg-white shadow-inner flex items-center justify-center">
               <PrintablePreview model={selectedModel} />
             </div>
-
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowPrintModal(false)}
-                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-              >
-                Cancelar
-              </button>
               <button
                 onClick={handlePrintSheet}
                 className="px-5 py-2 text-xs font-semibold rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors flex items-center gap-2 shadow-lg"
@@ -1073,8 +967,8 @@ export default function App() {
   );
 }
 
-// Renderiza colunas da tabela de questões de acordo com o modelo
-function renderQuestionColumns(scanResult: OMRScanResult, answerKey: Record<number, string>, modelKey: SheetModelKey) {
+// Renderiza colunas da tabela de questões de acordo com o modelo, passando as discursivas
+function renderQuestionColumns(scanResult: OMRScanResult, answerKey: Record<number, string>, modelKey: SheetModelKey, constructedQuestions: Record<number, boolean>) {
   const model = SHEET_MODELS[modelKey];
   const total = model.questionsCount;
   const colsCount = model.columns;
@@ -1100,21 +994,24 @@ function renderQuestionColumns(scanResult: OMRScanResult, answerKey: Record<numb
           question={q}
           expected={answerKey[q.question]}
           modelOptions={model.options}
+          isRC={constructedQuestions[q.question] || false}
         />
       ))}
     </div>
   ));
 }
 
-// Linha de questão na tabela
+// Linha de questão na tabela com diferenciação visual para discursivas (RC)
 function QuestionRow({
   question,
   expected,
-  modelOptions
+  modelOptions,
+  isRC
 }: {
   question: QuestionResult;
   expected: string;
   modelOptions: string[];
+  isRC: boolean;
 }) {
   const isCorrect = question.status === 'VALDA' && question.answer === expected;
 
@@ -1132,12 +1029,21 @@ function QuestionRow({
             const density = question.densities[opt] || 0;
 
             let bubbleClass = 'bg-slate-950 border border-slate-700 text-slate-400';
-            if (isTarget) {
-              bubbleClass = isCorrect
-                ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400'
-                : 'bg-rose-500 text-white font-bold border-rose-400';
-            } else if (isMarked) {
-              bubbleClass = 'bg-amber-500 text-slate-950 font-bold border-amber-400';
+            
+            if (isRC) {
+              if (isTarget) {
+                bubbleClass = 'bg-cyan-500 text-slate-950 font-bold border-cyan-400';
+              } else if (isMarked) {
+                bubbleClass = 'bg-cyan-500/50 text-slate-950 font-bold border-cyan-400/50';
+              }
+            } else {
+              if (isTarget) {
+                bubbleClass = isCorrect
+                  ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400'
+                  : 'bg-rose-500 text-white font-bold border-rose-400';
+              } else if (isMarked) {
+                bubbleClass = 'bg-amber-500 text-slate-950 font-bold border-amber-400';
+              }
             }
 
             return (
@@ -1156,10 +1062,14 @@ function QuestionRow({
       <div className="flex items-center gap-2">
         {question.status === 'VALDA' ? (
           <div className="flex items-center gap-1">
-            <span className="font-mono font-bold text-slate-200">
+            <span className={`font-mono font-bold ${isRC ? 'text-cyan-400' : 'text-slate-200'}`}>
               {question.answer}
             </span>
-            {isCorrect ? (
+            {isRC ? (
+              <span className="text-cyan-400 font-medium text-[10px]">
+                (+{question.answer === 'B' ? '0,5' : question.answer === 'C' ? '0,75' : question.answer === 'D' ? '1,0' : '0'})
+              </span>
+            ) : isCorrect ? (
               <span className="text-emerald-400 font-medium text-[10px]">Ok</span>
             ) : (
               <span className="text-rose-400 font-medium text-[10px]">
