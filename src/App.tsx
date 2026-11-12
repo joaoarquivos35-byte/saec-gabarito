@@ -479,7 +479,6 @@ export default function App() {
   const scoreData = calculateScore();
 
   return (
-    // FIX MOBILE: min-h-[100dvh] e overflow-x-hidden
     <div className="relative w-full min-h-[100dvh] bg-slate-950 flex flex-col select-none overflow-x-hidden">
       
       {/* 1. Interface Limpa: Câmera com flex-grow */}
@@ -540,29 +539,39 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. Barra Superior */}
-      <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent">
+      {/* 2. Barra Superior com Botão de Imprimir Restaurado */}
+      <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+          <span className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
             <Scan className="w-5 h-5 text-cyan-400" />
             OMR SAEC
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <label htmlFor="model-select" className="sr-only">Etapa Escolar</label>
           <select
             id="model-select"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value as SheetModelKey)}
-            className="px-3 py-2 text-xs font-medium rounded-lg bg-slate-900/95 text-white border border-slate-700 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer shadow-md"
+            className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-slate-900/95 text-white border border-slate-700 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer shadow-md"
           >
-            <option value="1ano">1º Ano (20 Questões)</option>
-            <option value="2e3ano">2º e 3º Ano (30 Questões)</option>
-            <option value="4ano">4º Ano (36 Questões)</option>
-            <option value="5ano">5º Ano (40 Questões)</option>
-            <option value="6a9ano">6º ao 9º Ano (50 Questões)</option>
+            <option value="1ano">1º Ano (20Q)</option>
+            <option value="2e3ano">2º/3º Ano (30Q)</option>
+            <option value="4ano">4º Ano (36Q)</option>
+            <option value="5ano">5º Ano (40Q)</option>
+            <option value="6a9ano">6º-9º Ano (50Q)</option>
           </select>
+
+          {/* Botão de Imprimir Folha Restaurado no Topo */}
+          <button
+            onClick={() => setShowPrintModal(true)}
+            title="Imprimir Folha SAEC"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-cyan-600/90 hover:bg-cyan-500 text-white transition-colors shadow-sm"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Imprimir</span>
+          </button>
 
           <button
             onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
@@ -574,7 +583,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3. Rodapé FIXO: sticky e sempre visível */}
+      {/* 3. Rodapé FIXO */}
       <footer className="sticky bottom-0 left-0 right-0 z-30 p-4 pb-6 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
         <div className="flex flex-wrap justify-center items-center gap-3">
           <button
@@ -873,6 +882,40 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL DE IMPRESSÃO DA FOLHA SAEC */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+          <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 text-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">
+                  Folha Oficial SAEC - {SHEET_MODELS[selectedModel].name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPrintModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="relative aspect-[1/1.414] max-h-[380px] mx-auto rounded-lg overflow-hidden border border-slate-700 bg-white shadow-inner flex items-center justify-center">
+              <PrintablePreview model={selectedModel} />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={handlePrintSheet}
+                className="px-5 py-2 text-xs font-semibold rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors flex items-center gap-2 shadow-lg"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimir Gabarito A4
+              </button>
             </div>
           </div>
         </div>
