@@ -152,7 +152,7 @@ export default function App() {
     } catch (err) {
       console.warn('Erro ao acessar a câmera:', err);
       setCameraActive(false);
-      setCameraError('Câmera indisponível no dispositivo. Você pode carregar uma foto ou clicar em "Testar Amostra" para verificação imediata!');
+      setCameraError('Câmera indisponível no dispositivo. Você pode carregar uma foto ou clicar em "Testar Amostra".');
     }
   }, [facingMode]);
 
@@ -211,7 +211,6 @@ export default function App() {
         setDetectedCorners(c);
         setScanMessage('4 Marcadores Encontrados! Pronto para escanear.');
 
-        // Traçado dinâmico do quadrilátero de homografia
         ctx.strokeStyle = '#06B6D4';
         ctx.lineWidth = 4;
         ctx.fillStyle = 'rgba(6, 182, 212, 0.12)';
@@ -229,7 +228,6 @@ export default function App() {
           ctx.strokeStyle = '#10B981';
           ctx.lineWidth = 3;
           ctx.strokeRect(p.x - s / 2, p.y - s / 2, s, s);
-
           ctx.fillStyle = '#10B981';
           ctx.font = 'bold 14px "JetBrains Mono", monospace';
           ctx.fillText(label, p.x - 12, p.y - s / 2 - 8);
@@ -260,7 +258,6 @@ export default function App() {
       const srcCtx = sourceCanvas.getContext('2d')!;
       const fullImgData = srcCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
 
-      // 1. Detecção dos 4 cantos
       const detection = detectFiducials(fullImgData);
       if (!detection.success || !detection.corners) {
         throw new Error(
@@ -268,12 +265,10 @@ export default function App() {
         );
       }
 
-      // 2. Warp de Perspectiva (Achatamento por Homografia)
       const targetW = 1000;
       const targetH = 1414;
       const warped = warpPerspective(fullImgData, detection.corners, targetW, targetH, 50);
 
-      // Canvas normalizado
       const warpedCanvas = document.createElement('canvas');
       warpedCanvas.width = targetW;
       warpedCanvas.height = targetH;
@@ -282,10 +277,8 @@ export default function App() {
       warpedImageDataObj.data.set(warped.data);
       warpedCtx.putImageData(warpedImageDataObj, 0, 0);
 
-      // 3. Leitura OMR das Bolhas (Objetivas A-D e Respostas Construídas T-P-E-B)
       const omrResult = scanOMRBubbles(warped, selectedModel, thresholdPercent);
 
-      // 4. Desenha sobreposição de auditoria visual
       warpedCtx.lineWidth = 2.5;
       for (const b of omrResult.bubbles) {
         const isSelected = b.density >= thresholdPercent;
@@ -375,9 +368,8 @@ export default function App() {
       const opt = model.options[(q * 2 + 1) % model.options.length];
       sampleAnswers[q] = opt;
     }
-    delete sampleAnswers[4]; // deixa em branco para teste
+    delete sampleAnswers[4];
 
-    // Simulação do Bloco de Respostas Construídas: Discursiva 01 = Total (T), Discursiva 02 = Parcial (P)
     const sampleConstructed: Record<number, string> = {
       1: 'T',
       2: 'P'
@@ -401,14 +393,12 @@ export default function App() {
       const isRC = constructedQuestions[q.question];
       
       if (isRC) {
-        // Regra de pesos para Resposta Construída (A=0, B=0.5, C=0.75, D=1.0)
         if (q.status === 'VALDA') {
           if (q.answer === 'B') score += 0.5;
           else if (q.answer === 'C') score += 0.75;
           else if (q.answer === 'D') score += 1.0;
         }
       } else {
-        // Regra normal para questão Objetiva (Certo=1, Errado=0)
         const expected = answerKey[q.question];
         if (q.status === 'VALDA' && q.answer === expected) {
           score += 1;
@@ -489,9 +479,11 @@ export default function App() {
   const scoreData = calculateScore();
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 flex flex-col select-none">
-      {/* 1. Interface Limpa: Câmera em Tela Cheia (Sem máscaras ou recortes fixos) */}
-      <div className="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+    // FIX MOBILE: min-h-[100dvh] e overflow-x-hidden
+    <div className="relative w-full min-h-[100dvh] bg-slate-950 flex flex-col select-none overflow-x-hidden">
+      
+      {/* 1. Interface Limpa: Câmera com flex-grow */}
+      <div className="relative flex-grow w-full min-h-[60vh] overflow-hidden flex items-center justify-center bg-black">
         <video
           ref={videoRef}
           playsInline
@@ -500,7 +492,6 @@ export default function App() {
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Canvas HUD Dinâmico de Marcadores */}
         <canvas
           ref={overlayCanvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none z-10"
@@ -525,21 +516,20 @@ export default function App() {
                   className="w-full py-2.5 px-4 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors flex items-center justify-center gap-2"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  Testar com Amostra Inclinada (Simulação com Discursivas)
+                  Testar com Amostra
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full py-2.5 px-4 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center justify-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
-                  Carregar Foto do Celular / Computador
+                  Carregar Foto
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Indicador de rastreamento no topo do vídeo */}
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-4 py-1.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-slate-800/80 text-xs font-medium text-slate-200 flex items-center gap-2 shadow-lg whitespace-nowrap">
           <div
             className={`w-2 h-2 rounded-full ${
@@ -557,7 +547,6 @@ export default function App() {
             <Scan className="w-5 h-5 text-cyan-400" />
             OMR SAEC
           </span>
-          <span className="hidden sm:inline text-xs text-slate-400">· Rede Municipal</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -582,32 +571,61 @@ export default function App() {
           >
             <RotateCw className="w-4 h-4" />
           </button>
+        </div>
+      </header>
 
+      {/* 3. Rodapé FIXO: sticky e sempre visível */}
+      <footer className="sticky bottom-0 left-0 right-0 z-30 p-4 pb-6 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
+        <div className="flex flex-wrap justify-center items-center gap-3">
           <button
-            onClick={() => setShowPrintModal(true)}
-            title="Imprimir Folha SAEC"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-900/80 text-slate-200 border border-slate-800 hover:bg-slate-800 transition-colors"
+            onClick={handleTestTiltedSample}
+            title="Testar Amostra com Respostas Construídas"
+            className="px-3 py-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 flex items-center gap-1.5 transition-all shadow-md active:scale-95"
           >
-            <Printer className="w-4 h-4 text-cyan-400" />
-            <span>Imprimir Folha</span>
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Testar Amostra</span>
           </button>
 
-          <a
-            href="/site-gabarito.zip"
-            download="site-gabarito.zip"
-            title="Baixar site-gabarito.zip para Vercel"
-            className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition-colors shadow-sm"
+          <button
+            onClick={handleScanClick}
+            disabled={isScanning}
+            className={`group relative flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 rounded-2xl font-semibold text-sm transition-all duration-200 shadow-2xl active:scale-95 ${
+              detectedCorners
+                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 ring-4 ring-cyan-500/30'
+                : 'bg-white hover:bg-slate-100 text-slate-950'
+            }`}
           >
-            <PackageCheck className="w-4 h-4" />
-            <span>ZIP Vercel</span>
-          </a>
+            {isScanning ? (
+              <>
+                <RotateCw className="w-5 h-5 animate-spin" />
+                <span>Processando...</span>
+              </>
+            ) : (
+              <>
+                <Scan className="w-5 h-5 transition-transform group-hover:scale-110" />
+                <span className="tracking-wide">
+                  {detectedCorners ? 'LER GABARITO' : 'LER GABARITO'}
+                </span>
+              </>
+            )}
+          </button>
+
+          {scanResult && (
+            <button
+              onClick={() => setShowResultModal(true)}
+              className="px-3 py-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 flex items-center gap-1.5 transition-all shadow-md"
+            >
+              <Eye className="w-4 h-4 text-cyan-400" />
+              <span className="hidden sm:inline">Ver Resultado</span>
+            </button>
+          )}
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Carregar Imagem"
-            className="p-2 rounded-lg bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800 hover:bg-slate-800 transition-colors"
+            title="Carregar Imagem da Galeria"
+            className="px-3 py-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 flex items-center gap-1.5 transition-all shadow-md active:scale-95"
           >
-            <Upload className="w-4 h-4" />
+            <Upload className="w-4 h-4 text-emerald-400" />
           </button>
           <input
             ref={fileInputRef}
@@ -617,59 +635,11 @@ export default function App() {
             onChange={handleFileUpload}
           />
         </div>
-      </header>
 
-      {/* 3. Rodapé com Botão Principal de Leitura */}
-      <footer className="absolute bottom-0 left-0 right-0 z-30 p-6 flex flex-col items-center justify-center bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleTestTiltedSample}
-            title="Testar Amostra com Respostas Construídas"
-            className="px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 flex items-center gap-1.5 transition-all shadow-md active:scale-95"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span className="hidden sm:inline">Testar Amostra SAEC</span>
-          </button>
-
-          <button
-            onClick={handleScanClick}
-            disabled={isScanning}
-            className={`group relative flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-semibold text-sm transition-all duration-200 shadow-2xl active:scale-95 ${
-              detectedCorners
-                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 ring-4 ring-cyan-500/30'
-                : 'bg-white hover:bg-slate-100 text-slate-950'
-            }`}
-          >
-            {isScanning ? (
-              <>
-                <RotateCw className="w-5 h-5 animate-spin" />
-                <span>Processando OMR...</span>
-              </>
-            ) : (
-              <>
-                <Scan className="w-5 h-5 transition-transform group-hover:scale-110" />
-                <span className="tracking-wide">
-                  {detectedCorners ? 'LER GABARITO (ALINHADO)' : 'LER GABARITO'}
-                </span>
-              </>
-            )}
-          </button>
-
-          {scanResult && (
-            <button
-              onClick={() => setShowResultModal(true)}
-              className="px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 flex items-center gap-1.5 transition-all shadow-md"
-            >
-              <Eye className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Ver Resultado</span>
-            </button>
-          )}
-        </div>
-
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+        <div className="mt-3 flex items-center justify-center gap-2 text-[10px] text-slate-500">
           <span>{SHEET_MODELS[selectedModel].shortName}</span>
           <span aria-hidden="true">·</span>
-          <span>4 Alternativas (A, B, C, D)</span>
+          <span>4 Alt (A-D)</span>
           <span aria-hidden="true">·</span>
           <span className="text-cyan-400 font-mono">Discursivas A=0, B=0.5, C=0.75, D=1.0</span>
         </div>
@@ -679,7 +649,6 @@ export default function App() {
       {showResultModal && scanResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
           <div className="relative w-full max-w-4xl max-h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
-            {/* Topo do Modal */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
@@ -687,12 +656,10 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-white leading-tight">
-                    Relatório de Correção OMR SAEC
+                    Relatório SAEC
                   </h2>
                   <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                     <span>{scanResult.model}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{scanResult.totalQuestions} Questões</span>
                   </div>
                 </div>
               </div>
@@ -700,60 +667,58 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleExportJSON}
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
                   title="Exportar JSON"
                 >
                   <Download className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setShowResultModal(false)}
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Abas */}
-            <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-800 bg-slate-950/40">
+            <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-800 bg-slate-950/40 overflow-x-auto">
               <button
                 onClick={() => setActiveTab('resultados')}
-                className={`pb-3 text-xs font-semibold border-b-2 transition-colors ${
+                className={`pb-3 text-xs font-semibold border-b-2 whitespace-nowrap ${
                   activeTab === 'resultados'
                     ? 'border-cyan-400 text-cyan-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Relatório de Pontuação
+                Pontuação
               </button>
               <button
                 onClick={() => setActiveTab('gabarito_oficial')}
-                className={`pb-3 text-xs font-semibold border-b-2 transition-colors ${
+                className={`pb-3 text-xs font-semibold border-b-2 whitespace-nowrap ${
                   activeTab === 'gabarito_oficial'
                     ? 'border-cyan-400 text-cyan-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Configurar Gabarito
+                Gabarito
               </button>
               <button
                 onClick={() => setActiveTab('visao_computacional')}
-                className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                className={`pb-3 text-xs font-semibold border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === 'visao_computacional'
                     ? 'border-cyan-400 text-cyan-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
-                Auditoria de Leitura
+                Auditoria
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* ABA 1: RESULTADOS GERAIS */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              {/* ABA RESULTADOS */}
               {activeTab === 'resultados' && (
                 <div className="space-y-6">
-                  {/* Resumo */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                       <div className="text-xs text-slate-400">Pontuação Total</div>
@@ -762,40 +727,27 @@ export default function App() {
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">{scoreData.percentage}% de acerto</div>
                     </div>
-
                     <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                       <div className="text-xs text-slate-400">Válidas</div>
                       <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
                         {scanResult.validCount}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">Bolhas únicas</div>
                     </div>
-
                     <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                       <div className="text-xs text-slate-400">Em Branco</div>
                       <div className="text-2xl font-bold font-mono text-amber-400 mt-1">
                         {scanResult.blankCount}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">Sem preenchimento</div>
                     </div>
-
                     <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                       <div className="text-xs text-slate-400">Dupla Marcação</div>
                       <div className="text-2xl font-bold font-mono text-rose-400 mt-1">
                         {scanResult.doubleMarkCount}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">Anuladas</div>
                     </div>
                   </div>
 
-                  {/* Tabela de Questões */}
                   <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
-                    <div className="px-4 py-3 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold text-slate-200">
-                        {SHEET_MODELS[selectedModel].shortName} · Alternativas A, B, C, D
-                      </h3>
-                    </div>
-
                     <div className={`grid grid-cols-1 ${SHEET_MODELS[selectedModel].columns === 3 ? 'md:grid-cols-3' : 'sm:grid-cols-2'} divide-y sm:divide-y-0 divide-slate-800`}>
                       {renderQuestionColumns(scanResult, answerKey, selectedModel, constructedQuestions)}
                     </div>
@@ -803,7 +755,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABA 2: GABARITO OFICIAL COM CONTROLE DE DISCURSIVAS */}
+              {/* ABA GABARITO OFICIAL */}
               {activeTab === 'gabarito_oficial' && (
                 <div className="space-y-4">
                   <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -811,16 +763,13 @@ export default function App() {
                       <h4 className="text-xs font-semibold text-slate-200">
                         Gabarito Oficial e Respostas Construídas (RC)
                       </h4>
-                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                        Defina a alternativa correta ou marque "É Discursiva?" para que a questão seja calculada com a tabela de pesos: <b>A=0, B=0.5, C=0.75, D=1.0</b>.
-                      </p>
                     </div>
                     <button
                       onClick={() => {
                         setAnswerKey(DEFAULT_ANSWER_KEYS[selectedModel]);
                         setConstructedQuestions({});
                       }}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors whitespace-nowrap"
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
                     >
                       Restaurar Padrão
                     </button>
@@ -843,9 +792,9 @@ export default function App() {
                                 type="checkbox"
                                 checked={isRC}
                                 onChange={(e) => setConstructedQuestions(prev => ({ ...prev, [qNum]: e.target.checked }))}
-                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30"
+                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-cyan-500"
                               />
-                              <span className="text-[10px] text-slate-400 font-medium">É Discursiva?</span>
+                              <span className="text-[10px] text-slate-400 font-medium">Discursiva?</span>
                             </label>
                           </div>
                           
@@ -877,13 +826,13 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABA 3: AUDITORIA DE VISÃO COMPUTACIONAL */}
+              {/* ABA AUDITORIA */}
               {activeTab === 'visao_computacional' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-slate-800 p-3 bg-slate-950/60 flex flex-col space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-300 font-medium">
-                        <span>1. Captura da Foto</span>
+                        <span>Captura da Foto</span>
                       </div>
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-black flex items-center justify-center border border-slate-800">
                         {auditImages.originalUrl ? (
@@ -893,10 +842,9 @@ export default function App() {
                         )}
                       </div>
                     </div>
-
                     <div className="rounded-xl border border-slate-800 p-3 bg-slate-950/60 flex flex-col space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-300 font-medium">
-                        <span>2. Folha Normalizada</span>
+                        <span>Folha Normalizada</span>
                       </div>
                       <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-black flex items-center justify-center border border-slate-800">
                         {auditImages.warpedUrl ? (
@@ -925,40 +873,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. MODAL DE IMPRESSÃO DA FOLHA SAEC */}
-      {showPrintModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 text-slate-100 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">
-                  Folha Oficial SAEC - {SHEET_MODELS[selectedModel].name}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowPrintModal(false)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="relative aspect-[1/1.414] max-h-[380px] mx-auto rounded-lg overflow-hidden border border-slate-700 bg-white shadow-inner flex items-center justify-center">
-              <PrintablePreview model={selectedModel} />
-            </div>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={handlePrintSheet}
-                className="px-5 py-2 text-xs font-semibold rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors flex items-center gap-2 shadow-lg"
-              >
-                <Printer className="w-4 h-4" />
-                Imprimir Gabarito A4
-              </button>
             </div>
           </div>
         </div>
