@@ -1,0 +1,6 @@
+{
+  "name": "OMR Gabarito Scanner Pro",
+  "description": "Sistema de Leitura Óptica de Gabaritos Escolares com detecção de marcadores (fiducials), correção de perspectiva (homografia) e análise de densidade de bolhas.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
