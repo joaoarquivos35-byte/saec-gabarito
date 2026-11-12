@@ -8,12 +8,10 @@ import {
   Camera,
   Scan,
   CheckCircle2,
-  AlertTriangle,
   Printer,
   Upload,
   RotateCw,
   Eye,
-  Download,
   X,
   Sparkles
 } from 'lucide-react';
@@ -26,8 +24,7 @@ import {
   SHEET_MODELS,
   type SheetModelKey,
   type FiducialCorners,
-  type OMRScanResult,
-  type QuestionResult
+  type OMRScanResult
 } from './scanner.ts';
 
 const DEFAULT_ANSWER_KEYS: Record<SheetModelKey, Record<number, string>> = {
@@ -44,8 +41,6 @@ export default function App() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
-  const [detectedCorners, setDetectedCorners] = useState<FiducialCorners | null>(null);
-  const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanMessage, setScanMessage] = useState<string>('Aponte a câmera para a folha de respostas');
   const [thresholdPercent, setThresholdPercent] = useState<number>(36);
 
@@ -133,14 +128,12 @@ export default function App() {
           bottomRight: { x: detection.corners.bottomRight.x * scaleX, y: detection.corners.bottomRight.y * scaleY },
           bottomLeft: { x: detection.corners.bottomLeft.x * scaleX, y: detection.corners.bottomLeft.y * scaleY }
         };
-        setDetectedCorners(c);
         setScanMessage('4 Cantos Encontrados! Pronto para escanear.');
 
         ctx.strokeStyle = '#06B6D4';
         ctx.lineWidth = 3;
         ctx.strokeRect(c.topLeft.x, c.topLeft.y, c.topRight.x - c.topLeft.x, c.bottomLeft.y - c.topLeft.y);
       } else {
-        setDetectedCorners(null);
         setScanMessage('Enquadre os 4 marcadores pretos da folha...');
       }
     };
@@ -149,13 +142,11 @@ export default function App() {
   }, [cameraActive]);
 
   const processImageForOMR = (sourceCanvas: HTMLCanvasElement) => {
-    setIsScanning(true);
-    setScanMessage('Processando leitura óptica...');
     try {
       const fullImgData = sourceCanvas.getContext('2d')!.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
       const detection = detectFiducials(fullImgData);
       if (!detection.success || !detection.corners) {
-        throw new Error('Não foi possível encontrar os 4 marcadores pretos. Certifique-se de que a folha está visível e iluminada.');
+        throw new Error('Não foi possível encontrar os 4 marcadores pretos.');
       }
 
       const targetW = 1000;
@@ -172,7 +163,6 @@ export default function App() {
       imgObj.data.set(warped.data);
       wCtx.putImageData(imgObj, 0, 0);
 
-      // Desenhar círculos de auditoria visual na imagem normalizada
       wCtx.lineWidth = 2;
       for (const b of omrResult.bubbles) {
         const isSelected = b.density >= thresholdPercent;
@@ -194,8 +184,6 @@ export default function App() {
       setScanMessage('Leitura concluída com sucesso!');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erro no processamento.');
-    } finally {
-      setIsScanning(false);
     }
   };
 
@@ -255,7 +243,6 @@ export default function App() {
 
   return (
     <div className="relative w-full min-h-[100dvh] bg-slate-950 flex flex-col select-none overflow-x-hidden">
-      {/* Vídeo / Câmera */}
       <div className="relative flex-grow w-full min-h-[60vh] bg-black flex items-center justify-center">
         <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" />
         <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
@@ -276,7 +263,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Barra Superior */}
       <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-slate-950/90 to-transparent">
         <span className="text-sm font-bold text-white flex items-center gap-1.5">
           <Scan className="w-5 h-5 text-cyan-400" /> OMR SAEC
@@ -302,12 +288,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* Rodapé Fixo */}
       <footer className="sticky bottom-0 left-0 right-0 z-30 p-4 bg-slate-950/95 border-t border-slate-800 flex justify-center items-center gap-3">
         <button onClick={handleTestSample} className="px-3 py-3 bg-slate-900 rounded-xl text-xs text-slate-300 border border-slate-800 flex items-center gap-1.5">
           <Sparkles className="w-4 h-4 text-amber-400" /> Amostra
         </button>
-        <button onClick={handleScanClick} disabled={isScanning} className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-2xl flex items-center gap-2 shadow-lg">
+        <button onClick={handleScanClick} className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-2xl flex items-center gap-2 shadow-lg">
           <Scan className="w-5 h-5" /> LER GABARITO
         </button>
         {scanResult && (
@@ -321,7 +306,6 @@ export default function App() {
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
       </footer>
 
-      {/* Modal de Resultados */}
       {showResultModal && scanResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
           <div className="w-full max-w-4xl max-h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col text-slate-100 shadow-2xl overflow-hidden">
@@ -330,9 +314,7 @@ export default function App() {
                 <CheckCircle2 className="w-6 h-6 text-cyan-400" />
                 <h2 className="text-base font-bold text-white">Relatório de Leitura SAEC</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowResultModal(false)} className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
-              </div>
+              <button onClick={() => setShowResultModal(false)} className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="flex gap-2 px-6 pt-3 border-b border-slate-800 bg-slate-950/40">
@@ -364,7 +346,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Listagem de Questões */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {scanResult.questions.map((q) => {
                       const isRC = constructedQuestions[q.question];
@@ -381,4 +362,105 @@ export default function App() {
                               <span className={isCorrect ? 'text-emerald-400 text-[10px]' : 'text-rose-400 text-[10px]'}>{isCorrect ? 'Correto' : `Gab: ${expected}`}</span>
                             )}
                           </div>
-               
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'gabarito' && (
+                <div className="space-y-4">
+                  <div className="text-xs text-slate-400">Marque quais questões são de Respostas Construídas (Discursivas):</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {Array.from({ length: SHEET_MODELS[selectedModel].questionsCount }, (_, i) => i + 1).map((qNum) => {
+                      const isRC = constructedQuestions[qNum] || false;
+                      return (
+                        <div key={qNum} className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-slate-300">Q{qNum}</span>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isRC}
+                                onChange={(e) => setConstructedQuestions(prev => ({ ...prev, [qNum]: e.target.checked }))}
+                                className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-700 text-cyan-500"
+                              />
+                              <span className="text-[10px] text-slate-400">Discursiva?</span>
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'auditoria' && (
+                <div className="space-y-4">
+                  <div className="text-xs text-slate-400">Imagem normalizada com marcação em tempo real das bolhas lidas:</div>
+                  <div className="aspect-[1/1.414] max-h-[450px] mx-auto bg-black rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
+                    {auditImages.warpedUrl ? (
+                      <img src={auditImages.warpedUrl} alt="Auditoria" className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-xs text-slate-500">Sem imagem de auditoria</span>
+                    )}
+                  </div>
+                  <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                    <label className="text-xs text-slate-300 block mb-1">Limiar de Densidade: {thresholdPercent}%</label>
+                    <input
+                      type="range"
+                      min="25"
+                      max="55"
+                      value={thresholdPercent}
+                      onChange={(e) => setThresholdPercent(Number(e.target.value))}
+                      className="w-full accent-cyan-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 text-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold">Folha Oficial SAEC - {SHEET_MODELS[selectedModel].name}</h3>
+              <button onClick={() => setShowPrintModal(false)} className="p-1 rounded-lg hover:bg-slate-800"><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <div className="aspect-[1/1.414] max-h-[350px] mx-auto bg-white rounded-lg overflow-hidden border border-slate-700 flex items-center justify-center">
+              <PrintablePreview model={selectedModel} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => {
+                const win = window.open('', '_blank');
+                if (!win) return;
+                const canvas = generateSheetCanvas(selectedModel);
+                win.document.write(`<html><body style="margin:0"><img src="${canvas.toDataURL()}" style="width:100%"/></body></html>`);
+                win.document.close();
+                win.print();
+              }} className="px-4 py-2 bg-cyan-500 text-slate-950 font-semibold rounded-lg text-xs flex items-center gap-2">
+                <Printer className="w-4 h-4" /> Imprimir Folha A4
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrintablePreview({ model }: { model: SheetModelKey }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const c = generateSheetCanvas(model);
+    ref.current.width = c.width;
+    ref.current.height = c.height;
+    ref.current.getContext('2d')?.drawImage(c, 0, 0);
+  }, [model]);
+  return <canvas ref={ref} className="w-full h-full object-contain" />;
+}
